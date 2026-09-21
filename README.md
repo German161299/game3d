@@ -27,6 +27,12 @@ python3 -m http.server 8000
 | Acercar / alejar cámara | rueda del mouse |
 | Atacar | `Espacio` |
 
+**En celular** los controles táctiles aparecen solos (joystick abajo a la
+izquierda, botón de ataque abajo a la derecha, arrastrar el dedo gira la
+cámara). El juego **solo se juega en horizontal**: si el teléfono está en
+vertical se muestra un aviso de "Girá tu teléfono" y el juego queda en
+pausa hasta rotarlo.
+
 ## Qué tiene el prototipo
 
 - Mundo 3D explorable (100x100) con árboles y rocas como obstáculos reales
@@ -42,6 +48,9 @@ python3 -m http.server 8000
 - Barras de vida flotantes sobre cada enemigo (posicionadas en 2D proyectando
   su posición 3D a pantalla en cada frame) y nombre del enemigo.
 - Textos de daño flotantes ("-18", "¡Subiste de nivel!").
+- Controles táctiles para celular (joystick + botón de ataque), detectados
+  automáticamente, con bloqueo de la jugabilidad en orientación vertical
+  (pantalla de "Girá tu teléfono" mientras no esté en horizontal).
 - Progresión de personaje: experiencia por matar enemigos, subida de nivel
   que aumenta vida máxima y daño de ataque.
 - HUD con nivel, barra de vida, barra de experiencia y contador de enemigos

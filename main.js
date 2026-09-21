@@ -37,9 +37,39 @@ function handleViewportResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  updateOrientationGate();
 }
 window.addEventListener('resize', handleViewportResize);
 window.addEventListener('orientationchange', () => setTimeout(handleViewportResize, 300));
+
+// ---------------------------------------------------------------------------
+// Solo horizontal en celular: bloquea el juego y pide girar el teléfono
+// ---------------------------------------------------------------------------
+const rotatePrompt = document.getElementById('rotate-prompt');
+let gamePaused = false;
+
+function updateOrientationGate() {
+  if (!isTouchDevice) return;
+  const landscape = window.innerWidth > window.innerHeight;
+  rotatePrompt.classList.toggle('hidden', landscape);
+  gamePaused = !landscape;
+}
+updateOrientationGate();
+
+let fullscreenAttempted = false;
+function tryEnterLandscapeFullscreen() {
+  if (fullscreenAttempted || !isTouchDevice) return;
+  fullscreenAttempted = true;
+  const request = document.documentElement.requestFullscreen
+    ? document.documentElement.requestFullscreen()
+    : Promise.resolve();
+  request
+    .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'))
+    .catch(() => {
+      // No soportado (típico en iOS Safari): el aviso de girar el teléfono
+      // sigue funcionando igual como respaldo universal.
+    });
+}
 
 // ---------------------------------------------------------------------------
 // Luces
@@ -297,6 +327,7 @@ function resetJoystick() {
 }
 
 joystickBase.addEventListener('pointerdown', (e) => {
+  tryEnterLandscapeFullscreen();
   joystickPointerId = e.pointerId;
   try {
     joystickBase.setPointerCapture(e.pointerId);
@@ -321,7 +352,8 @@ joystickBase.addEventListener('pointercancel', endJoystick);
 const attackButton = document.getElementById('attack-button');
 attackButton.addEventListener('pointerdown', (e) => {
   e.preventDefault();
-  tryPlayerAttack();
+  tryEnterLandscapeFullscreen();
+  if (!gamePaused) tryPlayerAttack();
 });
 
 // ---------------------------------------------------------------------------
@@ -705,8 +737,10 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  updatePlayer(dt);
-  for (const enemy of enemies) updateEnemy(enemy, dt);
+  if (!gamePaused) {
+    updatePlayer(dt);
+    for (const enemy of enemies) updateEnemy(enemy, dt);
+  }
   updateCamera();
   updateEnemyBars();
   updateFloatingTexts(dt);
