@@ -4,6 +4,16 @@ import * as THREE from 'three';
 // Setup básico: escena, cámara, renderer
 // ---------------------------------------------------------------------------
 const canvas = document.getElementById('game-canvas');
+const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+if (isTouchDevice) {
+  document.body.classList.add('touch-device');
+  document.getElementById('mobile-controls').classList.remove('hidden');
+  document.getElementById('instructions').innerHTML =
+    '<strong>Joystick</strong> moverte &nbsp;|&nbsp; ' +
+    '<strong>Arrastrá la pantalla</strong> mirar alrededor &nbsp;|&nbsp; ' +
+    '<strong>⚔</strong> atacar';
+}
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8ecfff);
 scene.fog = new THREE.Fog(0x8ecfff, 30, 110);
@@ -16,15 +26,20 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouchDevice ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
+if (isTouchDevice) {
+  renderer.shadowMap.type = THREE.BasicShadowMap;
+}
 
-window.addEventListener('resize', () => {
+function handleViewportResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-});
+}
+window.addEventListener('resize', handleViewportResize);
+window.addEventListener('orientationchange', () => setTimeout(handleViewportResize, 300));
 
 // ---------------------------------------------------------------------------
 // Luces
@@ -200,11 +215,19 @@ let lastPointer = { x: 0, y: 0 };
 canvas.addEventListener('pointerdown', (e) => {
   dragging = true;
   lastPointer = { x: e.clientX, y: e.clientY };
-  canvas.setPointerCapture(e.pointerId);
+  try {
+    canvas.setPointerCapture(e.pointerId);
+  } catch {
+    // Ignorado: el arrastre de cámara sigue funcionando sin captura.
+  }
 });
 canvas.addEventListener('pointerup', (e) => {
   dragging = false;
-  canvas.releasePointerCapture(e.pointerId);
+  try {
+    canvas.releasePointerCapture(e.pointerId);
+  } catch {
+    // El puntero ya pudo haber perdido la captura; no es un error real.
+  }
 });
 canvas.addEventListener('pointermove', (e) => {
   if (!dragging) return;
@@ -241,6 +264,65 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') e.preventDefault();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
+
+// ---------------------------------------------------------------------------
+// Joystick virtual y botón de ataque (controles táctiles para celular)
+// ---------------------------------------------------------------------------
+const joystickInput = { x: 0, z: 0 }; // x = eje derecha, z = eje adelante
+const joystickBase = document.getElementById('joystick-base');
+const joystickKnob = document.getElementById('joystick-knob');
+const JOYSTICK_RADIUS = 40;
+let joystickPointerId = null;
+
+function updateJoystick(e) {
+  const rect = joystickBase.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  let dx = e.clientX - cx;
+  let dy = e.clientY - cy;
+  const dist = Math.hypot(dx, dy);
+  if (dist > JOYSTICK_RADIUS) {
+    dx = (dx / dist) * JOYSTICK_RADIUS;
+    dy = (dy / dist) * JOYSTICK_RADIUS;
+  }
+  joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+  joystickInput.x = dx / JOYSTICK_RADIUS;
+  joystickInput.z = -dy / JOYSTICK_RADIUS;
+}
+
+function resetJoystick() {
+  joystickInput.x = 0;
+  joystickInput.z = 0;
+  joystickKnob.style.transform = 'translate(0px, 0px)';
+}
+
+joystickBase.addEventListener('pointerdown', (e) => {
+  joystickPointerId = e.pointerId;
+  try {
+    joystickBase.setPointerCapture(e.pointerId);
+  } catch {
+    // Algunos navegadores pueden rechazar la captura; el joystick sigue
+    // funcionando igual porque el listener de pointermove no depende de ella.
+  }
+  updateJoystick(e);
+});
+joystickBase.addEventListener('pointermove', (e) => {
+  if (e.pointerId !== joystickPointerId) return;
+  updateJoystick(e);
+});
+function endJoystick(e) {
+  if (e.pointerId !== joystickPointerId) return;
+  joystickPointerId = null;
+  resetJoystick();
+}
+joystickBase.addEventListener('pointerup', endJoystick);
+joystickBase.addEventListener('pointercancel', endJoystick);
+
+const attackButton = document.getElementById('attack-button');
+attackButton.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  tryPlayerAttack();
+});
 
 // ---------------------------------------------------------------------------
 // Enemigos
@@ -581,14 +663,25 @@ function updatePlayer(dt) {
   const forward = new THREE.Vector3(-Math.sin(cameraRig.yaw), 0, -Math.cos(cameraRig.yaw));
   const right = new THREE.Vector3(forward.z, 0, -forward.x);
 
-  const move = new THREE.Vector3();
-  if (keys.has('KeyW') || keys.has('ArrowUp')) move.add(forward);
-  if (keys.has('KeyS') || keys.has('ArrowDown')) move.sub(forward);
-  if (keys.has('KeyD') || keys.has('ArrowRight')) move.add(right);
-  if (keys.has('KeyA') || keys.has('ArrowLeft')) move.sub(right);
+  let forwardAxis = joystickInput.z;
+  let rightAxis = joystickInput.x;
+  if (keys.has('KeyW') || keys.has('ArrowUp')) forwardAxis += 1;
+  if (keys.has('KeyS') || keys.has('ArrowDown')) forwardAxis -= 1;
+  if (keys.has('KeyD') || keys.has('ArrowRight')) rightAxis += 1;
+  if (keys.has('KeyA') || keys.has('ArrowLeft')) rightAxis -= 1;
 
-  if (move.lengthSq() > 0) {
-    move.normalize().multiplyScalar(player.speed * dt);
+  const axisLen = Math.hypot(forwardAxis, rightAxis);
+  if (axisLen > 1) {
+    forwardAxis /= axisLen;
+    rightAxis /= axisLen;
+  }
+
+  const move = new THREE.Vector3();
+  move.addScaledVector(forward, forwardAxis);
+  move.addScaledVector(right, rightAxis);
+
+  if (move.lengthSq() > 0.0001) {
+    move.multiplyScalar(player.speed * dt);
     const nx = player.mesh.position.x + move.x;
     const nz = player.mesh.position.z + move.z;
     if (!isBlocked(nx, player.mesh.position.z, player.radius)) player.mesh.position.x = nx;

@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Reino de Fantasía 3D</title>
 <link rel="stylesheet" href="style.css" />
 </head>
@@ -29,6 +29,11 @@
   <div id="death-screen" class="hidden">
     <h1>Has caído en batalla</h1>
     <button id="respawn-btn">Reaparecer</button>
+  </div>
+
+  <div id="mobile-controls" class="hidden">
+    <div id="joystick-base"><div id="joystick-knob"></div></div>
+    <button id="attack-button" aria-label="Atacar">⚔</button>
   </div>
 
   <script type="importmap">
