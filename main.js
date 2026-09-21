@@ -352,6 +352,7 @@ function resetJoystick() {
 }
 
 joystickBase.addEventListener('pointerdown', (e) => {
+  if (editMode) return;
   joystickPointerId = e.pointerId;
   try {
     joystickBase.setPointerCapture(e.pointerId);
@@ -376,8 +377,119 @@ joystickBase.addEventListener('pointercancel', endJoystick);
 const attackButton = document.getElementById('attack-button');
 attackButton.addEventListener('pointerdown', (e) => {
   e.preventDefault();
+  if (editMode) return;
   tryPlayerAttack();
 });
+
+// ---------------------------------------------------------------------------
+// Editor de controles: permite arrastrar el joystick y el botón de ataque
+// a cualquier posición, y guarda esa posición para la próxima vez.
+// ---------------------------------------------------------------------------
+let editMode = false;
+const editControlsButton = document.getElementById('edit-controls-button');
+const editControlsToolbar = document.getElementById('edit-controls-toolbar');
+const resetControlsBtn = document.getElementById('reset-controls-btn');
+const doneControlsBtn = document.getElementById('done-controls-btn');
+
+const DEFAULT_CONTROL_LAYOUT = {
+  joystick: { left: 14, top: 82 },
+  attack: { left: 88, top: 82 },
+};
+
+function loadControlLayout() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('controlLayout'));
+    if (saved && saved.joystick && saved.attack) return saved;
+  } catch {
+    // Sin acceso a localStorage o dato corrupto: se usa el layout por defecto.
+  }
+  return null;
+}
+
+function applyControlLayout(layout) {
+  joystickBase.style.left = `${layout.joystick.left}%`;
+  joystickBase.style.top = `${layout.joystick.top}%`;
+  attackButton.style.left = `${layout.attack.left}%`;
+  attackButton.style.top = `${layout.attack.top}%`;
+}
+
+function saveControlLayout() {
+  const layout = {
+    joystick: { left: parseFloat(joystickBase.style.left), top: parseFloat(joystickBase.style.top) },
+    attack: { left: parseFloat(attackButton.style.left), top: parseFloat(attackButton.style.top) },
+  };
+  try {
+    localStorage.setItem('controlLayout', JSON.stringify(layout));
+  } catch {
+    // Sin acceso a localStorage: la posición no persiste, pero sigue funcionando en esta sesión.
+  }
+}
+
+function makeDraggableInEditMode(el) {
+  let dragPointerId = null;
+  let lastPointer = { x: 0, y: 0 };
+  el.addEventListener('pointerdown', (e) => {
+    if (!editMode) return;
+    e.preventDefault();
+    dragPointerId = e.pointerId;
+    lastPointer = { x: e.clientX, y: e.clientY };
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignorado: el arrastre sigue funcionando sin captura.
+    }
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!editMode || e.pointerId !== dragPointerId) return;
+    const physDx = e.clientX - lastPointer.x;
+    const physDy = e.clientY - lastPointer.y;
+    lastPointer = { x: e.clientX, y: e.clientY };
+    const { width, height } = getEffectiveSize();
+    const { dx, dy } = physicalDeltaToLogical(physDx, physDy);
+    const curLeft = parseFloat(el.style.left);
+    const curTop = parseFloat(el.style.top);
+    const nextLeft = Math.min(95, Math.max(5, curLeft + (dx / width) * 100));
+    const nextTop = Math.min(95, Math.max(5, curTop + (dy / height) * 100));
+    el.style.left = `${nextLeft}%`;
+    el.style.top = `${nextTop}%`;
+  });
+  el.addEventListener('pointerup', (e) => {
+    if (e.pointerId !== dragPointerId) return;
+    dragPointerId = null;
+  });
+  el.addEventListener('pointercancel', () => {
+    dragPointerId = null;
+  });
+}
+
+if (isTouchDevice) {
+  applyControlLayout(loadControlLayout() || DEFAULT_CONTROL_LAYOUT);
+  makeDraggableInEditMode(joystickBase);
+  makeDraggableInEditMode(attackButton);
+
+  editControlsButton.classList.remove('hidden');
+  editControlsButton.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    editMode = true;
+    resetJoystick();
+    document.body.classList.add('edit-controls-mode');
+    editControlsToolbar.classList.remove('hidden');
+  });
+
+  doneControlsBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    editMode = false;
+    document.body.classList.remove('edit-controls-mode');
+    editControlsToolbar.classList.add('hidden');
+    saveControlLayout();
+  });
+
+  resetControlsBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    applyControlLayout(DEFAULT_CONTROL_LAYOUT);
+    saveControlLayout();
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Enemigos
