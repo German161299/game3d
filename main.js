@@ -342,7 +342,10 @@ function updateJoystick(e) {
     dy = (dy / dist) * JOYSTICK_RADIUS;
   }
   joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
-  joystickInput.x = dx / JOYSTICK_RADIUS;
+  // El eje izquierda/derecha queda invertido para cómo la gente sostiene
+  // el teléfono en la práctica; se invierte acá (no en physicalDeltaToLogical)
+  // para no tocar también el arrastre de cámara.
+  joystickInput.x = -dx / JOYSTICK_RADIUS;
   joystickInput.z = -dy / JOYSTICK_RADIUS;
 }
 
