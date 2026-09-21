@@ -9,10 +9,6 @@ const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 if (isTouchDevice) {
   document.body.classList.add('touch-device');
   document.getElementById('mobile-controls').classList.remove('hidden');
-  document.getElementById('instructions').innerHTML =
-    '<strong>Joystick</strong> moverte &nbsp;|&nbsp; ' +
-    '<strong>Arrastrá la pantalla</strong> mirar alrededor &nbsp;|&nbsp; ' +
-    '<strong>⚔</strong> atacar';
 }
 
 const scene = new THREE.Scene();
@@ -677,6 +673,8 @@ function updateHud() {
   document.getElementById('level').textContent = String(player.level);
   document.getElementById('hp-fill').style.width = `${Math.max(0, (player.health / player.maxHealth) * 100)}%`;
   document.getElementById('xp-fill').style.width = `${Math.max(0, (player.xp / player.xpToNext) * 100)}%`;
+  document.getElementById('hp-text').textContent = `${Math.max(0, Math.round(player.health))} / ${player.maxHealth}`;
+  document.getElementById('xp-text').textContent = `${Math.max(0, Math.round(player.xp))} / ${player.xpToNext}`;
 }
 updateHud();
 
@@ -775,3 +773,11 @@ function animate() {
 }
 
 animate();
+
+// ---------------------------------------------------------------------------
+// Pantalla de carga: ya está todo armado (escena, enemigos, jugador), así
+// que se puede ocultar apenas arranca el primer frame de render.
+// ---------------------------------------------------------------------------
+const loadingScreen = document.getElementById('loading-screen');
+loadingScreen.classList.add('fade-out');
+setTimeout(() => loadingScreen.classList.add('hidden'), 350);
