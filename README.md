@@ -40,6 +40,19 @@ chiquito (⇄, arriba a la derecha) que invierte el sentido de la rotación.
 - Mundo 3D explorable (100x100) con árboles y rocas como obstáculos reales
   (bloquean el movimiento).
 - Cámara en tercera persona tipo "follow cam", orbitable con el mouse.
+- Estilo visual tipo anime/cel-shading (inspirado en juegos como Genshin
+  Impact): sombreado por bandas de pocos tonos (`MeshToonMaterial` +
+  degradado de 4 pasos) en vez del degradado realista por defecto, más
+  contornos negros alrededor de cada personaje (una malla invertida por
+  pieza, renderizada solo por su cara interna). Sigue siendo geometría
+  low-poly simple (cápsulas, esferas) — el cambio es de shading/estilo,
+  no de detalle de modelado.
+- Selector de calidad gráfica (🎨, arriba a la derecha): Bajo/Medio/Alto,
+  pensado para cuidar la batería en celular. Ajusta resolución de render
+  (pixel ratio), si hay sombras y su resolución, y si se ven los contornos
+  (son lo más caro: una malla extra por pieza, así que solo están en
+  "Alto"). Se guarda en `localStorage`; por defecto arranca en "Medio" en
+  celular y "Alto" en compu.
 - 3 tipos de enemigos con un modelo acorde a su nombre: Lobo Salvaje y
   Jabalí Furioso son cuadrúpedos de verdad (4 patas con trote en diagonal,
   hocico, orejas, cola; el jabalí además con colmillos y cuerpo más

@@ -17,12 +17,9 @@ scene.fog = new THREE.Fog(0x8ecfff, 30, 110);
 
 const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 500);
 
+// El pixel ratio y las sombras se terminan de configurar más abajo, según
+// la calidad gráfica elegida (ver applyQuality).
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouchDevice ? 1.5 : 2));
-renderer.shadowMap.enabled = true;
-if (isTouchDevice) {
-  renderer.shadowMap.type = THREE.BasicShadowMap;
-}
 
 // ---------------------------------------------------------------------------
 // Horizontal siempre, aunque el celular tenga el bloqueo de rotación activado:
@@ -109,14 +106,153 @@ sun.shadow.camera.far = 150;
 scene.add(sun);
 
 // ---------------------------------------------------------------------------
+// Estilo visual: cel-shading (anime) con degradado de pocos tonos +
+// contornos negros por malla invertida, inspirado en juegos como Genshin
+// Impact. El degradado de 4 tonos es lo que da el sombreado "por bandas"
+// en vez del degradado suave y realista de MeshStandardMaterial; el
+// contorno es una copia de cada malla, agrandada un poco y renderizada
+// solo por su cara interna (BackSide), así se ve como una línea negra
+// alrededor de la silueta.
+// ---------------------------------------------------------------------------
+const toonGradientMap = (() => {
+  const size = 4;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = 1;
+  const ctx = canvas.getContext('2d');
+  for (let i = 0; i < size; i++) {
+    const v = Math.round((i / (size - 1)) * 255);
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(i, 0, 1, 1);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.NearestFilter;
+  texture.magFilter = THREE.NearestFilter;
+  return texture;
+})();
+
+function toonMat(color, extra = {}) {
+  return new THREE.MeshToonMaterial({ color, gradientMap: toonGradientMap, ...extra });
+}
+
+// Los contornos son caros (una malla extra por pieza), así que se limitan
+// a los personajes y se pueden apagar del todo según la calidad elegida.
+const outlineMaterial = new THREE.MeshBasicMaterial({ color: 0x14100c, side: THREE.BackSide });
+const outlineMeshes = [];
+// La calidad se aplica antes de que existan los personajes (jugador y
+// enemigos se arman más abajo en el archivo), así que cada contorno nuevo
+// nace ya con la visibilidad que corresponda en vez de depender de un
+// barrido posterior sobre `outlineMeshes`.
+let outlinesEnabled = true;
+
+function addOutline(mesh, scaleFactor = 1.06) {
+  const outline = new THREE.Mesh(mesh.geometry, outlineMaterial);
+  outline.scale.setScalar(scaleFactor);
+  outline.visible = outlinesEnabled;
+  mesh.add(outline);
+  outlineMeshes.push(outline);
+  return outline;
+}
+
+function setOutlinesVisible(visible) {
+  outlinesEnabled = visible;
+  for (const outline of outlineMeshes) outline.visible = visible;
+}
+
+// ---------------------------------------------------------------------------
+// Calidad gráfica: bajo/medio/alto. Lo más caro en este juego es la
+// resolución de render (pixel ratio), el mapa de sombras y los contornos
+// (cada uno es una malla extra) — son las tres perillas que se tocan acá
+// para cuidar la batería en celular sin sacar el estilo por completo.
+// ---------------------------------------------------------------------------
+const QUALITY_PRESETS = {
+  low: { pixelRatioCap: 1, shadows: false, shadowMapSize: 512, outlines: false },
+  medium: { pixelRatioCap: 1.5, shadows: true, shadowMapSize: 1024, outlines: false },
+  high: { pixelRatioCap: 2, shadows: true, shadowMapSize: 2048, outlines: true },
+};
+
+let currentQuality = 'medium';
+
+function applyQuality(name) {
+  const preset = QUALITY_PRESETS[name] ? name : 'medium';
+  currentQuality = preset;
+  const settings = QUALITY_PRESETS[preset];
+
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.pixelRatioCap));
+  renderer.shadowMap.enabled = settings.shadows;
+  // No alcanza con apagar renderer.shadowMap.enabled: si la luz se queda con
+  // castShadow=true, el material sigue usando el último mapa de sombra ya
+  // generado (queda "congelado" en vez de desaparecer). Por eso también se
+  // apaga sun.castShadow, y se descarta el mapa viejo para que se regenere
+  // limpio la próxima vez que se reactiven las sombras.
+  sun.castShadow = settings.shadows;
+  if (settings.shadows) {
+    sun.shadow.mapSize.set(settings.shadowMapSize, settings.shadowMapSize);
+  }
+  if (sun.shadow.map) {
+    sun.shadow.map.dispose();
+    sun.shadow.map = null;
+  }
+  setOutlinesVisible(settings.outlines);
+  handleViewportResize();
+
+  for (const btn of qualityOptionButtons) {
+    btn.classList.toggle('active', btn.dataset.quality === preset);
+  }
+}
+
+function loadQualityPreference() {
+  try {
+    const saved = localStorage.getItem('graphicsQuality');
+    if (saved && QUALITY_PRESETS[saved]) return saved;
+  } catch {
+    // Sin acceso a localStorage: se usa el valor por defecto según el dispositivo.
+  }
+  return isTouchDevice ? 'medium' : 'high';
+}
+
+function saveQualityPreference(name) {
+  try {
+    localStorage.setItem('graphicsQuality', name);
+  } catch {
+    // Sin acceso a localStorage: la preferencia no persiste, pero se sigue aplicando.
+  }
+}
+
+const qualityButton = document.getElementById('quality-button');
+const qualityPanel = document.getElementById('quality-panel');
+const qualityOptionButtons = qualityPanel.querySelectorAll('button[data-quality]');
+
+qualityButton.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  qualityPanel.classList.toggle('hidden');
+});
+
+qualityOptionButtons.forEach((btn) => {
+  btn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    applyQuality(btn.dataset.quality);
+    saveQualityPreference(btn.dataset.quality);
+    qualityPanel.classList.add('hidden');
+  });
+});
+
+window.addEventListener('pointerdown', (e) => {
+  if (e.target !== qualityButton && !qualityPanel.contains(e.target)) {
+    qualityPanel.classList.add('hidden');
+  }
+});
+
+applyQuality(loadQualityPreference());
+
+// ---------------------------------------------------------------------------
 // Terreno
 // ---------------------------------------------------------------------------
 const WORLD_SIZE = 100;
 
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 1, 1),
-  new THREE.MeshStandardMaterial({ color: 0x4a7c3c, roughness: 1 })
-);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 1, 1), toonMat(0x4a7c3c));
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
@@ -127,18 +263,12 @@ const obstacles = []; // { x, z, radius }
 function addTree(x, z) {
   const group = new THREE.Group();
 
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.25, 0.35, 2.2, 8),
-    new THREE.MeshStandardMaterial({ color: 0x6b4226 })
-  );
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 2.2, 8), toonMat(0x6b4226));
   trunk.position.y = 1.1;
   trunk.castShadow = true;
   group.add(trunk);
 
-  const foliage = new THREE.Mesh(
-    new THREE.ConeGeometry(1.6, 3, 8),
-    new THREE.MeshStandardMaterial({ color: 0x2e6b2e })
-  );
+  const foliage = new THREE.Mesh(new THREE.ConeGeometry(1.6, 3, 8), toonMat(0x2e6b2e));
   foliage.position.y = 3.2;
   foliage.castShadow = true;
   group.add(foliage);
@@ -150,10 +280,7 @@ function addTree(x, z) {
 
 function addRock(x, z) {
   const scale = 0.6 + Math.random() * 0.8;
-  const rock = new THREE.Mesh(
-    new THREE.DodecahedronGeometry(scale, 0),
-    new THREE.MeshStandardMaterial({ color: 0x7d7d7d, roughness: 1 })
-  );
+  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(scale, 0), toonMat(0x7d7d7d));
   rock.position.set(x, scale * 0.5, z);
   rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
   rock.castShadow = true;
@@ -215,9 +342,9 @@ const mouthGeometry = new THREE.BoxGeometry(0.15, 0.03, 0.02);
 const earGeometry = new THREE.SphereGeometry(0.08, 8, 8);
 const weaponGeometry = new THREE.BoxGeometry(0.1, 0.95, 0.1);
 
-const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1410 });
-const mouthMaterial = new THREE.MeshStandardMaterial({ color: 0x4a2020 });
-const weaponMaterial = new THREE.MeshStandardMaterial({ color: 0xcfcfcf, metalness: 0.6, roughness: 0.3 });
+const eyeMaterial = toonMat(0x1a1410);
+const mouthMaterial = toonMat(0x4a2020);
+const weaponMaterial = toonMat(0xcfcfcf);
 
 // Geometrías compartidas para los enemigos de cuatro patas (lobo, jabalí)
 const quadLegGeometry = new THREE.CapsuleGeometry(0.09, 0.28, 4, 6);
@@ -227,7 +354,7 @@ const snoutGeometry = new THREE.BoxGeometry(0.16, 0.15, 0.24);
 const quadEarGeometry = new THREE.ConeGeometry(0.075, 0.15, 6);
 const tailGeometry = new THREE.CapsuleGeometry(0.05, 0.3, 4, 6);
 const tuskGeometry = new THREE.ConeGeometry(0.03, 0.14, 6);
-const tuskMaterial = new THREE.MeshStandardMaterial({ color: 0xf2ead9 });
+const tuskMaterial = toonMat(0xf2ead9);
 
 function addHand(armPivot, bodyMaterial) {
   const hand = new THREE.Mesh(handGeometry, bodyMaterial);
@@ -247,8 +374,8 @@ function addHand(armPivot, bodyMaterial) {
 
 function buildHumanoid(bodyColor, headColor, { hairColor = null, skeletal = false } = {}) {
   const group = new THREE.Group();
-  const bodyMaterial = new THREE.MeshStandardMaterial({ color: bodyColor });
-  const headMaterial = new THREE.MeshStandardMaterial({ color: headColor });
+  const bodyMaterial = toonMat(bodyColor);
+  const headMaterial = toonMat(headColor);
 
   // Piernas: cada una cuelga de un pivote en la cadera para poder rotarlas
   // al caminar sin que giren raro desde su propio centro. El pivote se
@@ -259,6 +386,7 @@ function buildHumanoid(bodyColor, headColor, { hairColor = null, skeletal = fals
   const legLeft = new THREE.Mesh(legGeometry, bodyMaterial);
   legLeft.position.y = -0.4;
   legLeft.castShadow = true;
+  addOutline(legLeft);
   legPivotLeft.add(legLeft);
   group.add(legPivotLeft);
 
@@ -267,12 +395,14 @@ function buildHumanoid(bodyColor, headColor, { hairColor = null, skeletal = fals
   const legRight = new THREE.Mesh(legGeometry, bodyMaterial);
   legRight.position.y = -0.4;
   legRight.castShadow = true;
+  addOutline(legRight);
   legPivotRight.add(legRight);
   group.add(legPivotRight);
 
   const torso = new THREE.Mesh(torsoGeometry, bodyMaterial);
   torso.position.y = 1.3;
   torso.castShadow = true;
+  addOutline(torso);
   group.add(torso);
 
   // Brazos: mismo truco del pivote, ahora en el hombro (más cerca del
@@ -284,6 +414,7 @@ function buildHumanoid(bodyColor, headColor, { hairColor = null, skeletal = fals
   const armLeft = new THREE.Mesh(armGeometry, bodyMaterial);
   armLeft.position.y = -0.3;
   armLeft.castShadow = true;
+  addOutline(armLeft);
   armPivotLeft.add(armLeft);
   addHand(armPivotLeft, bodyMaterial);
   group.add(armPivotLeft);
@@ -293,6 +424,7 @@ function buildHumanoid(bodyColor, headColor, { hairColor = null, skeletal = fals
   const armRight = new THREE.Mesh(armGeometry, bodyMaterial);
   armRight.position.y = -0.3;
   armRight.castShadow = true;
+  addOutline(armRight);
   armPivotRight.add(armRight);
   addHand(armPivotRight, bodyMaterial);
   group.add(armPivotRight);
@@ -301,10 +433,11 @@ function buildHumanoid(bodyColor, headColor, { hairColor = null, skeletal = fals
   const head = new THREE.Mesh(headGeometry, headMaterial);
   head.position.y = 2.1;
   head.castShadow = true;
+  addOutline(head);
   group.add(head);
 
   if (hairColor !== null) {
-    const hair = new THREE.Mesh(hairGeometry, new THREE.MeshStandardMaterial({ color: hairColor }));
+    const hair = new THREE.Mesh(hairGeometry, toonMat(hairColor));
     hair.castShadow = true;
     head.add(hair);
   }
@@ -356,8 +489,8 @@ function buildHumanoid(bodyColor, headColor, { hairColor = null, skeletal = fals
 // ---------------------------------------------------------------------------
 function buildQuadruped(bodyColor, headColor, { stocky = false } = {}) {
   const group = new THREE.Group();
-  const bodyMaterial = new THREE.MeshStandardMaterial({ color: bodyColor });
-  const headMaterial = new THREE.MeshStandardMaterial({ color: headColor });
+  const bodyMaterial = toonMat(bodyColor);
+  const headMaterial = toonMat(headColor);
   const hipHeight = 0.45;
 
   const body = new THREE.Mesh(quadBodyGeometry, bodyMaterial);
@@ -365,6 +498,7 @@ function buildQuadruped(bodyColor, headColor, { stocky = false } = {}) {
   body.position.set(0, hipHeight + 0.1, 0);
   if (stocky) body.scale.set(1, 1.3, 1.2);
   body.castShadow = true;
+  addOutline(body);
   group.add(body);
 
   const legSpots = [
@@ -380,6 +514,7 @@ function buildQuadruped(bodyColor, headColor, { stocky = false } = {}) {
     const leg = new THREE.Mesh(quadLegGeometry, bodyMaterial);
     leg.position.y = -0.17;
     leg.castShadow = true;
+    addOutline(leg);
     pivot.add(leg);
     group.add(pivot);
     legPivots[key] = pivot;
@@ -392,6 +527,7 @@ function buildQuadruped(bodyColor, headColor, { stocky = false } = {}) {
 
   const head = new THREE.Mesh(quadHeadGeometry, headMaterial);
   head.castShadow = true;
+  addOutline(head);
   headPivot.add(head);
 
   const snout = new THREE.Mesh(snoutGeometry, headMaterial);
