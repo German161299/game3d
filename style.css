@@ -1,0 +1,174 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  color: #f0e6d2;
+}
+
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+#game-canvas:active {
+  cursor: grabbing;
+}
+
+#hud {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  user-select: none;
+  pointer-events: none;
+}
+
+#player-stats {
+  background: rgba(10, 10, 20, 0.55);
+  border: 1px solid rgba(240, 230, 210, 0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  width: 220px;
+}
+
+.bar-label {
+  font-size: 13px;
+  margin-bottom: 4px;
+  text-shadow: 0 1px 2px #000;
+}
+
+.bar {
+  width: 100%;
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.bar-fill {
+  height: 100%;
+  width: 100%;
+  transition: width 0.2s ease-out;
+}
+
+.hp-bar .bar-fill {
+  background: linear-gradient(180deg, #e74c3c, #a92f22);
+}
+
+.xp-bar .bar-fill {
+  background: linear-gradient(180deg, #f1c40f, #b8940a);
+}
+
+#kill-counter {
+  margin-top: 8px;
+  background: rgba(10, 10, 20, 0.55);
+  border: 1px solid rgba(240, 230, 210, 0.3);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  display: inline-block;
+}
+
+#crosshair {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+  z-index: 10;
+  pointer-events: none;
+}
+
+#instructions {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 20, 0.55);
+  border: 1px solid rgba(240, 230, 210, 0.3);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  z-index: 10;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.enemy-health-bar {
+  position: fixed;
+  width: 46px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  overflow: hidden;
+  z-index: 5;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.enemy-health-bar-fill {
+  height: 100%;
+  background: linear-gradient(180deg, #e74c3c, #a92f22);
+}
+
+.enemy-name-tag {
+  position: fixed;
+  z-index: 5;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  font-size: 11px;
+  text-shadow: 0 1px 2px #000;
+  white-space: nowrap;
+}
+
+#death-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: rgba(20, 0, 0, 0.6);
+}
+
+#death-screen h1 {
+  font-size: 32px;
+  text-shadow: 0 2px 6px #000;
+}
+
+#death-screen button {
+  font-size: 16px;
+  padding: 10px 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(240, 230, 210, 0.5);
+  background: rgba(10, 10, 20, 0.8);
+  color: #f0e6d2;
+  cursor: pointer;
+}
+
+#death-screen button:hover {
+  background: rgba(240, 230, 210, 0.15);
+}
+
+.hidden {
+  display: none !important;
+}
