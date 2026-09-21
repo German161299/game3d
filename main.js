@@ -197,33 +197,58 @@ function isBlocked(x, z, selfRadius = 0.4, ignore = null) {
 // ---------------------------------------------------------------------------
 function buildHumanoid(bodyColor, headColor) {
   const group = new THREE.Group();
+  const limbMaterial = new THREE.MeshStandardMaterial({ color: bodyColor });
 
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.4, 0.9, 4, 8),
+  const legGeometry = new THREE.CylinderGeometry(0.12, 0.14, 0.8, 8);
+  const legLeft = new THREE.Mesh(legGeometry, limbMaterial);
+  legLeft.position.set(-0.2, 0.4, 0);
+  legLeft.castShadow = true;
+  group.add(legLeft);
+
+  const legRight = new THREE.Mesh(legGeometry, limbMaterial);
+  legRight.position.set(0.2, 0.4, 0);
+  legRight.castShadow = true;
+  group.add(legRight);
+
+  const torso = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.3, 0.4, 4, 8),
     new THREE.MeshStandardMaterial({ color: bodyColor })
   );
-  body.position.y = 1.05;
-  body.castShadow = true;
-  group.add(body);
+  torso.position.y = 1.3;
+  torso.castShadow = true;
+  group.add(torso);
+
+  const armGeometry = new THREE.CylinderGeometry(0.09, 0.1, 0.7, 8);
+  const armLeft = new THREE.Mesh(armGeometry, limbMaterial);
+  armLeft.position.set(-0.42, 1.35, 0);
+  armLeft.rotation.z = 0.1;
+  armLeft.castShadow = true;
+  group.add(armLeft);
+
+  const armRight = new THREE.Mesh(armGeometry, limbMaterial);
+  armRight.position.set(0.42, 1.35, 0);
+  armRight.rotation.z = -0.1;
+  armRight.castShadow = true;
+  group.add(armRight);
 
   const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.32, 12, 12),
+    new THREE.SphereGeometry(0.3, 12, 12),
     new THREE.MeshStandardMaterial({ color: headColor })
   );
-  head.position.y = 1.85;
+  head.position.y = 2.1;
   head.castShadow = true;
   group.add(head);
 
   const weapon = new THREE.Mesh(
-    new THREE.BoxGeometry(0.12, 1.1, 0.12),
+    new THREE.BoxGeometry(0.1, 0.95, 0.1),
     new THREE.MeshStandardMaterial({ color: 0xcfcfcf, metalness: 0.6, roughness: 0.3 })
   );
-  weapon.position.set(0.55, 1.1, 0);
+  weapon.position.set(0.6, 1.1, 0.18);
   weapon.rotation.z = 0.3;
   weapon.castShadow = true;
   group.add(weapon);
 
-  return { group, weapon };
+  return { group, weapon, torso, limbMaterial };
 }
 
 const { group: playerMesh, weapon: playerWeapon } = buildHumanoid(0x2a5db0, 0xe8c39e);
@@ -504,7 +529,7 @@ const enemies = [];
 
 function spawnEnemy(spawnX, spawnZ) {
   const type = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
-  const { group } = buildHumanoid(type.bodyColor, type.headColor);
+  const { group, torso, limbMaterial } = buildHumanoid(type.bodyColor, type.headColor);
   group.scale.setScalar(0.9);
   group.position.set(spawnX, 0, spawnZ);
   scene.add(group);
@@ -524,6 +549,8 @@ function spawnEnemy(spawnX, spawnZ) {
   enemies.push({
     type,
     mesh: group,
+    torso,
+    limbMaterial,
     nameTag,
     barWrap,
     barFill,
@@ -637,7 +664,8 @@ function updateEnemy(enemy, dt) {
   }
 
   const flashColor = enemy.hitFlash > 0 ? 0xff5555 : enemy.type.bodyColor;
-  enemy.mesh.children[0].material.color.setHex(flashColor);
+  enemy.torso.material.color.setHex(flashColor);
+  enemy.limbMaterial.color.setHex(flashColor);
 }
 
 function damageEnemy(enemy, amount) {
