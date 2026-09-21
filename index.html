@@ -7,39 +7,37 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <canvas id="game-canvas"></canvas>
+  <div id="rotate-wrapper">
+    <canvas id="game-canvas"></canvas>
 
-  <div id="hud">
-    <div id="player-stats">
-      <div class="bar-label">Nivel <span id="level">1</span></div>
-      <div class="bar hp-bar"><div id="hp-fill" class="bar-fill"></div></div>
-      <div class="bar xp-bar"><div id="xp-fill" class="bar-fill"></div></div>
+    <div id="hud">
+      <div id="player-stats">
+        <div class="bar-label">Nivel <span id="level">1</span></div>
+        <div class="bar hp-bar"><div id="hp-fill" class="bar-fill"></div></div>
+        <div class="bar xp-bar"><div id="xp-fill" class="bar-fill"></div></div>
+      </div>
+      <div id="kill-counter">Enemigos derrotados: <span id="kills">0</span></div>
     </div>
-    <div id="kill-counter">Enemigos derrotados: <span id="kills">0</span></div>
-  </div>
 
-  <div id="crosshair"></div>
+    <div id="crosshair"></div>
 
-  <div id="instructions">
-    <strong>WASD</strong> moverte &nbsp;|&nbsp;
-    <strong>Click + arrastrar</strong> mirar alrededor &nbsp;|&nbsp;
-    <strong>Espacio</strong> atacar
-  </div>
+    <div id="instructions">
+      <strong>WASD</strong> moverte &nbsp;|&nbsp;
+      <strong>Click + arrastrar</strong> mirar alrededor &nbsp;|&nbsp;
+      <strong>Espacio</strong> atacar
+    </div>
 
-  <div id="death-screen" class="hidden">
-    <h1>Has caído en batalla</h1>
-    <button id="respawn-btn">Reaparecer</button>
-  </div>
+    <div id="death-screen" class="hidden">
+      <h1>Has caído en batalla</h1>
+      <button id="respawn-btn">Reaparecer</button>
+    </div>
 
-  <div id="mobile-controls" class="hidden">
-    <div id="joystick-base"><div id="joystick-knob"></div></div>
-    <button id="attack-button" aria-label="Atacar">⚔</button>
-  </div>
+    <div id="mobile-controls" class="hidden">
+      <div id="joystick-base"><div id="joystick-knob"></div></div>
+      <button id="attack-button" aria-label="Atacar">⚔</button>
+    </div>
 
-  <div id="rotate-prompt" class="hidden">
-    <div class="rotate-icon">↻</div>
-    <p>Girá tu teléfono para jugar</p>
-    <p class="rotate-subtext">Este juego se juega solo en horizontal</p>
+    <button id="flip-rotation-button" class="hidden" aria-label="Invertir rotación de pantalla">⇄</button>
   </div>
 
   <script type="importmap">

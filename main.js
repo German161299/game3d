@@ -4,6 +4,7 @@ import * as THREE from 'three';
 // Setup básico: escena, cámara, renderer
 // ---------------------------------------------------------------------------
 const canvas = document.getElementById('game-canvas');
+const rotateWrapper = document.getElementById('rotate-wrapper');
 const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 if (isTouchDevice) {
   document.body.classList.add('touch-device');
@@ -18,58 +19,81 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8ecfff);
 scene.fog = new THREE.Fog(0x8ecfff, 30, 110);
 
-const camera = new THREE.PerspectiveCamera(
-  60,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  500
-);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 500);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouchDevice ? 1.5 : 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 if (isTouchDevice) {
   renderer.shadowMap.type = THREE.BasicShadowMap;
 }
 
+// ---------------------------------------------------------------------------
+// Horizontal siempre, aunque el celular tenga el bloqueo de rotación activado:
+// en vez de pedirle al usuario que gire el teléfono (inútil si el sistema
+// operativo no va a rotar la pantalla), se rota el contenido con CSS para que
+// siempre se vea y se juegue en horizontal.
+// ---------------------------------------------------------------------------
+const flipButton = document.getElementById('flip-rotation-button');
+
+function isRawPortrait() {
+  return window.innerWidth < window.innerHeight;
+}
+
+function getEffectiveSize() {
+  if (isTouchDevice && isRawPortrait()) {
+    return { width: window.innerHeight, height: window.innerWidth };
+  }
+  return { width: window.innerWidth, height: window.innerHeight };
+}
+
 function handleViewportResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
+  if (isTouchDevice) {
+    document.body.classList.toggle('force-rotate', isRawPortrait());
+  }
+  const { width, height } = getEffectiveSize();
+  camera.aspect = width / height;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  updateOrientationGate();
+  renderer.setSize(width, height);
+}
+
+// El drag/joystick llega en coordenadas físicas de pantalla; cuando el
+// contenido está rotado por CSS hay que convertir esas coordenadas al
+// sistema "lógico" (sin rotar) en el que vive el resto del juego.
+function isForceRotateActive() {
+  return document.body.classList.contains('force-rotate');
+}
+
+function physicalDeltaToLogical(physDx, physDy) {
+  if (!isForceRotateActive()) return { dx: physDx, dy: physDy };
+  const flipped = document.body.classList.contains('flip-rotation');
+  return flipped ? { dx: -physDy, dy: physDx } : { dx: physDy, dy: -physDx };
 }
 window.addEventListener('resize', handleViewportResize);
 window.addEventListener('orientationchange', () => setTimeout(handleViewportResize, 300));
 
-// ---------------------------------------------------------------------------
-// Solo horizontal en celular: bloquea el juego y pide girar el teléfono
-// ---------------------------------------------------------------------------
-const rotatePrompt = document.getElementById('rotate-prompt');
-let gamePaused = false;
+if (isTouchDevice) {
+  flipButton.classList.remove('hidden');
+  let flipped = false;
+  try {
+    flipped = localStorage.getItem('landscapeFlip') === '1';
+  } catch {
+    // Sin acceso a localStorage (navegación privada, etc.): usa el valor por defecto.
+  }
+  if (flipped) document.body.classList.add('flip-rotation');
 
-function updateOrientationGate() {
-  if (!isTouchDevice) return;
-  const landscape = window.innerWidth > window.innerHeight;
-  rotatePrompt.classList.toggle('hidden', landscape);
-  gamePaused = !landscape;
+  flipButton.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    document.body.classList.toggle('flip-rotation');
+    try {
+      localStorage.setItem('landscapeFlip', document.body.classList.contains('flip-rotation') ? '1' : '0');
+    } catch {
+      // Sin acceso a localStorage: la preferencia no persiste, pero el botón sigue funcionando.
+    }
+  });
 }
-updateOrientationGate();
 
-let fullscreenAttempted = false;
-function tryEnterLandscapeFullscreen() {
-  if (fullscreenAttempted || !isTouchDevice) return;
-  fullscreenAttempted = true;
-  const request = document.documentElement.requestFullscreen
-    ? document.documentElement.requestFullscreen()
-    : Promise.resolve();
-  request
-    .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'))
-    .catch(() => {
-      // No soportado (típico en iOS Safari): el aviso de girar el teléfono
-      // sigue funcionando igual como respaldo universal.
-    });
-}
+handleViewportResize();
 
 // ---------------------------------------------------------------------------
 // Luces
@@ -261,9 +285,10 @@ canvas.addEventListener('pointerup', (e) => {
 });
 canvas.addEventListener('pointermove', (e) => {
   if (!dragging) return;
-  const dx = e.clientX - lastPointer.x;
-  const dy = e.clientY - lastPointer.y;
+  const physDx = e.clientX - lastPointer.x;
+  const physDy = e.clientY - lastPointer.y;
   lastPointer = { x: e.clientX, y: e.clientY };
+  const { dx, dy } = physicalDeltaToLogical(physDx, physDy);
   cameraRig.yaw -= dx * 0.006;
   cameraRig.pitch -= dy * 0.005;
   cameraRig.pitch = Math.max(0.08, Math.min(1.2, cameraRig.pitch));
@@ -308,8 +333,9 @@ function updateJoystick(e) {
   const rect = joystickBase.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
-  let dx = e.clientX - cx;
-  let dy = e.clientY - cy;
+  const physDx = e.clientX - cx;
+  const physDy = e.clientY - cy;
+  let { dx, dy } = physicalDeltaToLogical(physDx, physDy);
   const dist = Math.hypot(dx, dy);
   if (dist > JOYSTICK_RADIUS) {
     dx = (dx / dist) * JOYSTICK_RADIUS;
@@ -327,7 +353,6 @@ function resetJoystick() {
 }
 
 joystickBase.addEventListener('pointerdown', (e) => {
-  tryEnterLandscapeFullscreen();
   joystickPointerId = e.pointerId;
   try {
     joystickBase.setPointerCapture(e.pointerId);
@@ -352,8 +377,7 @@ joystickBase.addEventListener('pointercancel', endJoystick);
 const attackButton = document.getElementById('attack-button');
 attackButton.addEventListener('pointerdown', (e) => {
   e.preventDefault();
-  tryEnterLandscapeFullscreen();
-  if (!gamePaused) tryPlayerAttack();
+  tryPlayerAttack();
 });
 
 // ---------------------------------------------------------------------------
@@ -377,14 +401,14 @@ function spawnEnemy(spawnX, spawnZ) {
   const nameTag = document.createElement('div');
   nameTag.className = 'enemy-name-tag';
   nameTag.textContent = type.name;
-  document.body.appendChild(nameTag);
+  rotateWrapper.appendChild(nameTag);
 
   const barWrap = document.createElement('div');
   barWrap.className = 'enemy-health-bar';
   const barFill = document.createElement('div');
   barFill.className = 'enemy-health-bar-fill';
   barWrap.appendChild(barFill);
-  document.body.appendChild(barWrap);
+  rotateWrapper.appendChild(barWrap);
 
   enemies.push({
     type,
@@ -608,7 +632,7 @@ function spawnFloatingText(worldPos, text, color) {
   el.style.textShadow = '0 1px 2px #000';
   el.style.pointerEvents = 'none';
   el.style.zIndex = '6';
-  document.body.appendChild(el);
+  rotateWrapper.appendChild(el);
   floatingTexts.push({
     el,
     pos: worldPos.clone().add(new THREE.Vector3(0, 2.1, 0)),
@@ -635,9 +659,10 @@ function updateFloatingTexts(dt) {
 
 function toScreenPosition(worldPos) {
   const vector = worldPos.clone().project(camera);
+  const { width, height } = getEffectiveSize();
   return {
-    x: (vector.x * 0.5 + 0.5) * window.innerWidth,
-    y: (-vector.y * 0.5 + 0.5) * window.innerHeight,
+    x: (vector.x * 0.5 + 0.5) * width,
+    y: (-vector.y * 0.5 + 0.5) * height,
     behind: vector.z > 1,
   };
 }
@@ -737,10 +762,8 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  if (!gamePaused) {
-    updatePlayer(dt);
-    for (const enemy of enemies) updateEnemy(enemy, dt);
-  }
+  updatePlayer(dt);
+  for (const enemy of enemies) updateEnemy(enemy, dt);
   updateCamera();
   updateEnemyBars();
   updateFloatingTexts(dt);

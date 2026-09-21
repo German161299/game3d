@@ -29,9 +29,11 @@ python3 -m http.server 8000
 
 **En celular** los controles táctiles aparecen solos (joystick abajo a la
 izquierda, botón de ataque abajo a la derecha, arrastrar el dedo gira la
-cámara). El juego **solo se juega en horizontal**: si el teléfono está en
-vertical se muestra un aviso de "Girá tu teléfono" y el juego queda en
-pausa hasta rotarlo.
+cámara). El juego **fuerza la vista horizontal apenas carga**, incluso con
+el bloqueo de rotación del sistema activado: no hay que rotar nada, la
+pantalla ya se ve y se juega en horizontal. Si al abrirlo la orientación
+queda "al revés" para tu forma de sostener el teléfono, hay un botón
+chiquito (⇄, arriba a la derecha) que invierte el sentido de la rotación.
 
 ## Qué tiene el prototipo
 
@@ -49,8 +51,8 @@ pausa hasta rotarlo.
   su posición 3D a pantalla en cada frame) y nombre del enemigo.
 - Textos de daño flotantes ("-18", "¡Subiste de nivel!").
 - Controles táctiles para celular (joystick + botón de ataque), detectados
-  automáticamente, con bloqueo de la jugabilidad en orientación vertical
-  (pantalla de "Girá tu teléfono" mientras no esté en horizontal).
+  automáticamente, con vista horizontal forzada por CSS (funciona aunque
+  el sistema operativo tenga el bloqueo de rotación activado).
 - Progresión de personaje: experiencia por matar enemigos, subida de nivel
   que aumenta vida máxima y daño de ataque.
 - HUD con nivel, barra de vida, barra de experiencia y contador de enemigos
