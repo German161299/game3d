@@ -40,13 +40,24 @@ chiquito (⇄, arriba a la derecha) que invierte el sentido de la rotación.
 - Mundo 3D explorable (100x100) con árboles y rocas como obstáculos reales
   (bloquean el movimiento).
 - Cámara en tercera persona tipo "follow cam", orbitable con el mouse.
-- 3 tipos de enemigos (Lobo Salvaje, Jabalí Furioso, Esqueleto Errante), cada
-  uno con su propia vida, daño y velocidad.
+- 3 tipos de enemigos con un modelo acorde a su nombre: Lobo Salvaje y
+  Jabalí Furioso son cuadrúpedos de verdad (4 patas con trote en diagonal,
+  hocico, orejas, cola; el jabalí además con colmillos y cuerpo más
+  robusto), y Esqueleto Errante es humanoide pero huesudo (blanco hueso,
+  sin pelo, sin nariz ni boca). Cada uno con su propia vida, daño y
+  velocidad.
 - IA simple de enemigos: deambulan cerca de su punto de aparición, persiguen
-  al jugador si se acerca demasiado (aggro), atacan cuerpo a cuerpo, y
-  vuelven a "aparecer" (respawn) un rato después de morir.
+  al jugador si se acerca demasiado (aggro), atacan cuerpo a cuerpo (con su
+  propia animación: mordisco para los cuadrúpedos, espadazo/hachazo para el
+  esqueleto), y vuelven a "aparecer" (respawn) un rato después de morir.
 - Combate cuerpo a cuerpo: el jugador ataca al enemigo más cercano dentro de
   rango con `Espacio`; daño con variación aleatoria.
+- Personajes con cuerpo articulado (piernas y brazos con pivote en cadera/
+  hombro, no un solo bloque): las piernas se mueven alternadas al caminar
+  (o al trote en diagonal para los cuadrúpedos) y el brazo/cabeza se anima
+  al atacar. El jugador (y cualquier personaje humano) tiene cabello, cara
+  (ojos, nariz, boca, orejas) y manos con dedos estilizados (3, no 5, para
+  no disparar la cantidad de piezas 3D con ~15 personajes en pantalla).
 - Barras de vida flotantes sobre cada enemigo (posicionadas en 2D proyectando
   su posición 3D a pantalla en cada frame) y nombre del enemigo.
 - Textos de daño flotantes ("-18", "¡Subiste de nivel!").

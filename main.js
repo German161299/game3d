@@ -195,69 +195,265 @@ function isBlocked(x, z, selfRadius = 0.4, ignore = null) {
 // ---------------------------------------------------------------------------
 // Jugador
 // ---------------------------------------------------------------------------
-function buildHumanoid(bodyColor, headColor) {
+// Geometrías compartidas entre todos los personajes (jugador + enemigos):
+// se crean una sola vez y se reutilizan, solo cambia el color del material
+// por personaje.
+// Cápsulas (no cilindros) para brazos y piernas: los extremos redondeados
+// se hunden en el torso sin dejar un corte recto a la vista, y con el
+// solapamiento extra de las posiciones de abajo el cuerpo se ve como una
+// sola pieza en vez de tubos pegoteados.
+const legGeometry = new THREE.CapsuleGeometry(0.13, 0.55, 4, 8);
+const armGeometry = new THREE.CapsuleGeometry(0.1, 0.45, 4, 8);
+const torsoGeometry = new THREE.CapsuleGeometry(0.3, 0.4, 4, 8);
+const headGeometry = new THREE.SphereGeometry(0.3, 12, 12);
+const hairGeometry = new THREE.SphereGeometry(0.305, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55);
+const handGeometry = new THREE.SphereGeometry(0.11, 8, 8);
+const fingerGeometry = new THREE.BoxGeometry(0.035, 0.14, 0.035);
+const eyeGeometry = new THREE.SphereGeometry(0.045, 8, 8);
+const noseGeometry = new THREE.BoxGeometry(0.06, 0.07, 0.06);
+const mouthGeometry = new THREE.BoxGeometry(0.15, 0.03, 0.02);
+const earGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+const weaponGeometry = new THREE.BoxGeometry(0.1, 0.95, 0.1);
+
+const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1410 });
+const mouthMaterial = new THREE.MeshStandardMaterial({ color: 0x4a2020 });
+const weaponMaterial = new THREE.MeshStandardMaterial({ color: 0xcfcfcf, metalness: 0.6, roughness: 0.3 });
+
+// Geometrías compartidas para los enemigos de cuatro patas (lobo, jabalí)
+const quadLegGeometry = new THREE.CapsuleGeometry(0.09, 0.28, 4, 6);
+const quadBodyGeometry = new THREE.CapsuleGeometry(0.26, 0.55, 4, 8);
+const quadHeadGeometry = new THREE.SphereGeometry(0.22, 10, 10);
+const snoutGeometry = new THREE.BoxGeometry(0.16, 0.15, 0.24);
+const quadEarGeometry = new THREE.ConeGeometry(0.075, 0.15, 6);
+const tailGeometry = new THREE.CapsuleGeometry(0.05, 0.3, 4, 6);
+const tuskGeometry = new THREE.ConeGeometry(0.03, 0.14, 6);
+const tuskMaterial = new THREE.MeshStandardMaterial({ color: 0xf2ead9 });
+
+function addHand(armPivot, bodyMaterial) {
+  const hand = new THREE.Mesh(handGeometry, bodyMaterial);
+  hand.position.y = -0.62;
+  hand.castShadow = true;
+  armPivot.add(hand);
+
+  // 3 dedos estilizados (no 5) para no disparar la cantidad de mallas por
+  // personaje — con ~15 personajes en pantalla, cada dedo extra pesa.
+  for (const offsetX of [-0.07, 0, 0.07]) {
+    const finger = new THREE.Mesh(fingerGeometry, bodyMaterial);
+    finger.position.set(offsetX, -0.72, 0.02);
+    finger.rotation.z = offsetX * 1.1;
+    armPivot.add(finger);
+  }
+}
+
+function buildHumanoid(bodyColor, headColor, { hairColor = null, skeletal = false } = {}) {
   const group = new THREE.Group();
-  const limbMaterial = new THREE.MeshStandardMaterial({ color: bodyColor });
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: bodyColor });
+  const headMaterial = new THREE.MeshStandardMaterial({ color: headColor });
 
-  const legGeometry = new THREE.CylinderGeometry(0.12, 0.14, 0.8, 8);
-  const legLeft = new THREE.Mesh(legGeometry, limbMaterial);
-  legLeft.position.set(-0.2, 0.4, 0);
+  // Piernas: cada una cuelga de un pivote en la cadera para poder rotarlas
+  // al caminar sin que giren raro desde su propio centro. El pivote se
+  // hunde un poco en el torso (en vez de tocarlo justo) para que no se
+  // note el corte entre las dos piezas.
+  const legPivotLeft = new THREE.Group();
+  legPivotLeft.position.set(-0.19, 0.95, 0);
+  const legLeft = new THREE.Mesh(legGeometry, bodyMaterial);
+  legLeft.position.y = -0.4;
   legLeft.castShadow = true;
-  group.add(legLeft);
+  legPivotLeft.add(legLeft);
+  group.add(legPivotLeft);
 
-  const legRight = new THREE.Mesh(legGeometry, limbMaterial);
-  legRight.position.set(0.2, 0.4, 0);
+  const legPivotRight = new THREE.Group();
+  legPivotRight.position.set(0.19, 0.95, 0);
+  const legRight = new THREE.Mesh(legGeometry, bodyMaterial);
+  legRight.position.y = -0.4;
   legRight.castShadow = true;
-  group.add(legRight);
+  legPivotRight.add(legRight);
+  group.add(legPivotRight);
 
-  const torso = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.3, 0.4, 4, 8),
-    new THREE.MeshStandardMaterial({ color: bodyColor })
-  );
+  const torso = new THREE.Mesh(torsoGeometry, bodyMaterial);
   torso.position.y = 1.3;
   torso.castShadow = true;
   group.add(torso);
 
-  const armGeometry = new THREE.CylinderGeometry(0.09, 0.1, 0.7, 8);
-  const armLeft = new THREE.Mesh(armGeometry, limbMaterial);
-  armLeft.position.set(-0.42, 1.35, 0);
-  armLeft.rotation.z = 0.1;
+  // Brazos: mismo truco del pivote, ahora en el hombro (más cerca del
+  // torso y más abajo, a la altura donde el torso todavía tiene su ancho
+  // completo) para poder animar el hachazo/espadazo al atacar sin dejar
+  // un hueco entre el brazo y el cuerpo.
+  const armPivotLeft = new THREE.Group();
+  armPivotLeft.position.set(-0.36, 1.55, 0);
+  const armLeft = new THREE.Mesh(armGeometry, bodyMaterial);
+  armLeft.position.y = -0.3;
   armLeft.castShadow = true;
-  group.add(armLeft);
+  armPivotLeft.add(armLeft);
+  addHand(armPivotLeft, bodyMaterial);
+  group.add(armPivotLeft);
 
-  const armRight = new THREE.Mesh(armGeometry, limbMaterial);
-  armRight.position.set(0.42, 1.35, 0);
-  armRight.rotation.z = -0.1;
+  const armPivotRight = new THREE.Group();
+  armPivotRight.position.set(0.36, 1.55, 0);
+  const armRight = new THREE.Mesh(armGeometry, bodyMaterial);
+  armRight.position.y = -0.3;
   armRight.castShadow = true;
-  group.add(armRight);
+  armPivotRight.add(armRight);
+  addHand(armPivotRight, bodyMaterial);
+  group.add(armPivotRight);
 
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.3, 12, 12),
-    new THREE.MeshStandardMaterial({ color: headColor })
-  );
+  // Cabeza + cara (ojos, nariz, boca, orejas)
+  const head = new THREE.Mesh(headGeometry, headMaterial);
   head.position.y = 2.1;
   head.castShadow = true;
   group.add(head);
 
-  const weapon = new THREE.Mesh(
-    new THREE.BoxGeometry(0.1, 0.95, 0.1),
-    new THREE.MeshStandardMaterial({ color: 0xcfcfcf, metalness: 0.6, roughness: 0.3 })
-  );
-  weapon.position.set(0.6, 1.1, 0.18);
+  if (hairColor !== null) {
+    const hair = new THREE.Mesh(hairGeometry, new THREE.MeshStandardMaterial({ color: hairColor }));
+    hair.castShadow = true;
+    head.add(hair);
+  }
+
+  const eyeLeft = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  eyeLeft.position.set(-0.12, 0.04, 0.27);
+  head.add(eyeLeft);
+
+  const eyeRight = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  eyeRight.position.set(0.12, 0.04, 0.27);
+  head.add(eyeRight);
+
+  if (!skeletal) {
+    // Un cráneo no tiene nariz ni labios — se saltean para el esqueleto.
+    const nose = new THREE.Mesh(noseGeometry, headMaterial);
+    nose.position.set(0, -0.03, 0.29);
+    head.add(nose);
+
+    const mouth = new THREE.Mesh(mouthGeometry, mouthMaterial);
+    mouth.position.set(0, -0.11, 0.27);
+    head.add(mouth);
+  }
+
+  const earLeft = new THREE.Mesh(earGeometry, headMaterial);
+  earLeft.position.set(-0.29, 0, 0);
+  earLeft.scale.set(0.55, 1, 1);
+  head.add(earLeft);
+
+  const earRight = new THREE.Mesh(earGeometry, headMaterial);
+  earRight.position.set(0.29, 0, 0);
+  earRight.scale.set(0.55, 1, 1);
+  head.add(earRight);
+
+  // Arma: colgada de la mano derecha (pivote del brazo), así sigue el
+  // movimiento del brazo cuando ataca.
+  const weapon = new THREE.Mesh(weaponGeometry, weaponMaterial);
+  weapon.position.set(0.05, -0.62, 0.1);
   weapon.rotation.z = 0.3;
   weapon.castShadow = true;
-  group.add(weapon);
+  armPivotRight.add(weapon);
 
-  return { group, weapon, torso, limbMaterial };
+  return { group, weapon, bodyMaterial, legPivotLeft, legPivotRight, armPivotLeft, armPivotRight };
 }
 
-const { group: playerMesh, weapon: playerWeapon } = buildHumanoid(0x2a5db0, 0xe8c39e);
+// ---------------------------------------------------------------------------
+// Enemigos de cuatro patas (lobo, jabalí): un cuerpo horizontal con 4
+// patas, cabeza con hocico y orejas, y cola — nada que ver con la forma
+// humanoide, para que se parezcan a lo que dice su nombre.
+// ---------------------------------------------------------------------------
+function buildQuadruped(bodyColor, headColor, { stocky = false } = {}) {
+  const group = new THREE.Group();
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: bodyColor });
+  const headMaterial = new THREE.MeshStandardMaterial({ color: headColor });
+  const hipHeight = 0.45;
+
+  const body = new THREE.Mesh(quadBodyGeometry, bodyMaterial);
+  body.rotation.z = Math.PI / 2;
+  body.position.set(0, hipHeight + 0.1, 0);
+  if (stocky) body.scale.set(1, 1.3, 1.2);
+  body.castShadow = true;
+  group.add(body);
+
+  const legSpots = [
+    ['frontLeft', -0.16, 0.32],
+    ['frontRight', 0.16, 0.32],
+    ['backLeft', -0.16, -0.32],
+    ['backRight', 0.16, -0.32],
+  ];
+  const legPivots = {};
+  for (const [key, x, z] of legSpots) {
+    const pivot = new THREE.Group();
+    pivot.position.set(x, hipHeight + 0.08, z);
+    const leg = new THREE.Mesh(quadLegGeometry, bodyMaterial);
+    leg.position.y = -0.17;
+    leg.castShadow = true;
+    pivot.add(leg);
+    group.add(pivot);
+    legPivots[key] = pivot;
+  }
+
+  // La cabeza tiene su propio pivote para poder animar un mordisco al atacar.
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, hipHeight + 0.22, 0.4);
+  group.add(headPivot);
+
+  const head = new THREE.Mesh(quadHeadGeometry, headMaterial);
+  head.castShadow = true;
+  headPivot.add(head);
+
+  const snout = new THREE.Mesh(snoutGeometry, headMaterial);
+  snout.position.set(0, -0.06, 0.22);
+  headPivot.add(snout);
+
+  const eyeLeft = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  eyeLeft.position.set(-0.09, 0.06, 0.18);
+  headPivot.add(eyeLeft);
+
+  const eyeRight = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  eyeRight.position.set(0.09, 0.06, 0.18);
+  headPivot.add(eyeRight);
+
+  const earLeft = new THREE.Mesh(quadEarGeometry, headMaterial);
+  earLeft.position.set(-0.12, 0.24, -0.03);
+  earLeft.rotation.z = -0.2;
+  headPivot.add(earLeft);
+
+  const earRight = new THREE.Mesh(quadEarGeometry, headMaterial);
+  earRight.position.set(0.12, 0.24, -0.03);
+  earRight.rotation.z = 0.2;
+  headPivot.add(earRight);
+
+  if (stocky) {
+    const tuskLeft = new THREE.Mesh(tuskGeometry, tuskMaterial);
+    tuskLeft.position.set(-0.07, -0.1, 0.28);
+    tuskLeft.rotation.x = Math.PI * 0.42;
+    headPivot.add(tuskLeft);
+
+    const tuskRight = new THREE.Mesh(tuskGeometry, tuskMaterial);
+    tuskRight.position.set(0.07, -0.1, 0.28);
+    tuskRight.rotation.x = Math.PI * 0.42;
+    headPivot.add(tuskRight);
+  }
+
+  const tail = new THREE.Mesh(tailGeometry, bodyMaterial);
+  tail.position.set(0, hipHeight + 0.12, -0.5);
+  tail.rotation.x = stocky ? -0.3 : -0.85;
+  tail.castShadow = true;
+  group.add(tail);
+
+  return { group, bodyMaterial, legPivots, headPivot };
+}
+
+const {
+  group: playerMesh,
+  weapon: playerWeapon,
+  legPivotLeft: playerLegPivotLeft,
+  legPivotRight: playerLegPivotRight,
+  armPivotRight: playerArmPivotRight,
+} = buildHumanoid(0x2a5db0, 0xe8c39e, { hairColor: 0x3b2a1a });
 playerMesh.position.set(0, 0, 0);
 scene.add(playerMesh);
 
 const player = {
   mesh: playerMesh,
   weapon: playerWeapon,
+  legPivotLeft: playerLegPivotLeft,
+  legPivotRight: playerLegPivotRight,
+  armPivotRight: playerArmPivotRight,
+  walkCycle: 0,
   yaw: 0,
   speed: 6,
   radius: 0.45,
@@ -520,17 +716,27 @@ if (isTouchDevice) {
 // Enemigos
 // ---------------------------------------------------------------------------
 const ENEMY_TYPES = [
-  { name: 'Lobo Salvaje', bodyColor: 0x5b4636, headColor: 0x3f2f22, health: 45, damage: [6, 10], speed: 4.2, xp: 18 },
-  { name: 'Jabalí Furioso', bodyColor: 0x7a4a2b, headColor: 0x5c3720, health: 65, damage: [8, 14], speed: 3.2, xp: 26 },
-  { name: 'Esqueleto Errante', bodyColor: 0xd8d3c4, headColor: 0xefe9d8, health: 55, damage: [10, 16], speed: 3.6, xp: 30 },
+  { name: 'Lobo Salvaje', bodyType: 'quadruped', bodyColor: 0x5b4636, headColor: 0x4a3826, health: 45, damage: [6, 10], speed: 4.2, xp: 18 },
+  { name: 'Jabalí Furioso', bodyType: 'quadruped', stocky: true, bodyColor: 0x7a4a2b, headColor: 0x6b4024, health: 65, damage: [8, 14], speed: 3.2, xp: 26 },
+  { name: 'Esqueleto Errante', bodyType: 'skeleton', bodyColor: 0xd8d3c4, headColor: 0xefe9d8, health: 55, damage: [10, 16], speed: 3.6, xp: 30 },
 ];
 
 const enemies = [];
 
 function spawnEnemy(spawnX, spawnZ) {
   const type = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
-  const { group, torso, limbMaterial } = buildHumanoid(type.bodyColor, type.headColor);
-  group.scale.setScalar(0.9);
+  const isQuadruped = type.bodyType === 'quadruped';
+  const built = isQuadruped
+    ? buildQuadruped(type.bodyColor, type.headColor, { stocky: !!type.stocky })
+    : buildHumanoid(type.bodyColor, type.headColor, { skeletal: true }); // esqueleto: sin pelo/nariz/boca
+
+  const { group, bodyMaterial } = built;
+  if (isQuadruped) {
+    group.scale.setScalar(1);
+  } else {
+    // El esqueleto queda más flaco/huesudo que un humano normal.
+    group.scale.set(0.78, 0.92, 0.78);
+  }
   group.position.set(spawnX, 0, spawnZ);
   scene.add(group);
 
@@ -548,9 +754,16 @@ function spawnEnemy(spawnX, spawnZ) {
 
   enemies.push({
     type,
+    isQuadruped,
     mesh: group,
-    torso,
-    limbMaterial,
+    bodyMaterial,
+    legPivotLeft: built.legPivotLeft,
+    legPivotRight: built.legPivotRight,
+    legPivots: built.legPivots,
+    armPivotRight: built.armPivotRight,
+    headPivot: built.headPivot,
+    walkCycle: Math.random() * 10,
+    swingTimer: 0,
     nameTag,
     barWrap,
     barFill,
@@ -626,6 +839,7 @@ function updateEnemy(enemy, dt) {
       enemy.attackCooldown -= dt;
       if (enemy.attackCooldown <= 0 && player.alive) {
         enemy.attackCooldown = 1.1;
+        enemy.swingTimer = 0.25;
         const dmg = Math.floor(
           enemy.type.damage[0] + Math.random() * (enemy.type.damage[1] - enemy.type.damage[0])
         );
@@ -652,7 +866,8 @@ function updateEnemy(enemy, dt) {
     }
   }
 
-  if (moveX !== 0 || moveZ !== 0) {
+  const isMoving = moveX !== 0 || moveZ !== 0;
+  if (isMoving) {
     const speed = enemy.type.speed * (enemy.state === 'chasing' ? 1 : 0.45);
     const nx = enemy.mesh.position.x + moveX * speed * dt;
     const nz = enemy.mesh.position.z + moveZ * speed * dt;
@@ -663,9 +878,28 @@ function updateEnemy(enemy, dt) {
     enemy.mesh.rotation.y = Math.atan2(moveX, moveZ);
   }
 
+  if (enemy.isQuadruped) {
+    animateQuadrupedWalk(enemy, isMoving, dt);
+  } else {
+    animateWalkCycle(enemy, isMoving, dt);
+  }
+
+  if (enemy.swingTimer > 0) {
+    enemy.swingTimer -= dt;
+    const swing = -Math.sin((0.25 - enemy.swingTimer) * 25);
+    if (enemy.isQuadruped) {
+      enemy.headPivot.rotation.x = swing * 0.5;
+    } else {
+      enemy.armPivotRight.rotation.x = swing * 1.1;
+    }
+  } else if (enemy.isQuadruped) {
+    enemy.headPivot.rotation.x = 0;
+  } else {
+    enemy.armPivotRight.rotation.x = 0;
+  }
+
   const flashColor = enemy.hitFlash > 0 ? 0xff5555 : enemy.type.bodyColor;
-  enemy.torso.material.color.setHex(flashColor);
-  enemy.limbMaterial.color.setHex(flashColor);
+  enemy.bodyMaterial.color.setHex(flashColor);
 }
 
 function damageEnemy(enemy, amount) {
@@ -853,6 +1087,35 @@ function updateEnemyBars() {
 // ---------------------------------------------------------------------------
 const clock = new THREE.Clock();
 
+// Ciclo de caminata: balancea las piernas (pivote de cadera) en fase
+// opuesta mientras el personaje se mueve, y las vuelve al centro cuando
+// se detiene. Se usa tanto para el jugador como para cada enemigo.
+function animateWalkCycle(character, isMoving, dt) {
+  if (isMoving) {
+    character.walkCycle += dt * 9;
+  }
+  const targetSwing = isMoving ? Math.sin(character.walkCycle) * 0.5 : 0;
+  const ease = Math.min(1, dt * 8);
+  character.legPivotLeft.rotation.x += (targetSwing - character.legPivotLeft.rotation.x) * ease;
+  character.legPivotRight.rotation.x += (-targetSwing - character.legPivotRight.rotation.x) * ease;
+}
+
+// Trote de cuatro patas: las diagonales opuestas (delantera-izq +
+// trasera-der, delantera-der + trasera-izq) se mueven juntas, como
+// caminan de verdad los animales de cuatro patas.
+function animateQuadrupedWalk(enemy, isMoving, dt) {
+  if (isMoving) {
+    enemy.walkCycle += dt * 12;
+  }
+  const swing = isMoving ? Math.sin(enemy.walkCycle) * 0.6 : 0;
+  const ease = Math.min(1, dt * 8);
+  const { frontLeft, frontRight, backLeft, backRight } = enemy.legPivots;
+  frontLeft.rotation.x += (swing - frontLeft.rotation.x) * ease;
+  backRight.rotation.x += (swing - backRight.rotation.x) * ease;
+  frontRight.rotation.x += (-swing - frontRight.rotation.x) * ease;
+  backLeft.rotation.x += (-swing - backLeft.rotation.x) * ease;
+}
+
 function updatePlayer(dt) {
   if (player.invulnerableTimer > 0) player.invulnerableTimer -= dt;
   if (player.attackCooldown > 0) player.attackCooldown -= dt;
@@ -878,7 +1141,8 @@ function updatePlayer(dt) {
   move.addScaledVector(forward, forwardAxis);
   move.addScaledVector(right, rightAxis);
 
-  if (move.lengthSq() > 0.0001) {
+  const isMoving = move.lengthSq() > 0.0001;
+  if (isMoving) {
     move.multiplyScalar(player.speed * dt);
     const nx = player.mesh.position.x + move.x;
     const nz = player.mesh.position.z + move.z;
@@ -891,11 +1155,13 @@ function updatePlayer(dt) {
     player.mesh.rotation.y += diff * Math.min(1, dt * 10);
   }
 
+  animateWalkCycle(player, isMoving, dt);
+
   if (swingTimer > 0) {
     swingTimer -= dt;
-    player.weapon.rotation.x = Math.sin((0.25 - swingTimer) * 25) * 1.2;
+    player.armPivotRight.rotation.x = -Math.sin((0.25 - swingTimer) * 25) * 1.1;
   } else {
-    player.weapon.rotation.x = 0;
+    player.armPivotRight.rotation.x = 0;
   }
 }
 
